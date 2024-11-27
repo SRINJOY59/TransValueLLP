@@ -40,53 +40,18 @@ st.title("Mutual Fund Scheme Selection using AHP")
 user_id = st.text_input("Enter your unique login ID:", placeholder="e.g., user123")
 
 st.markdown("""
-### Instructions for Using the Analytical Hierarchy Process (AHP):
-
-1. **Select the Criteria for Evaluation:**
-   - Begin by selecting the criteria that are important for evaluating the options (in this case, mutual fund schemes).
-   - These criteria will serve as the foundation for comparison and ranking.
-
-2. **Pairwise Comparisons:**
-   - A pairwise comparison matrix will be created based on the criteria you selected.
-   - For each pair of criteria, you will be asked to determine which one is more important in the context of your decision-making process.
-   - Rate the importance of one criterion relative to the other using a scale of 1 to 9, where:
-     - **1** means both criteria are equally important.
-     - **3** means one criterion is moderately more important than the other.
-     - **5** means one criterion is strongly more important than the other.
-     - **7** means one criterion is very strongly more important than the other.
-     - **9** means one criterion is extremely more important than the other.
-     - **Even values (2, 4, 6, 8)** can also be used to express intermediate levels of importance.
-
-3. **Using the Slider for Rating Importance:**
-   - As you evaluate each pair of criteria, use the slider to rate the relative importance of one over the other.
-   - The slider will allow you to select a value between 1 and 9, making it easy to quantify the importance of each comparison.
-
-4. **Calculate Weights:**
-   - Once all the pairwise comparisons are made, the system will calculate the **priority vector**, which represents the relative importance (or weights) of each criterion.
-   - The weights will give you an idea of how much each criterion contributes to the final decision, with higher values indicating more important criteria.
-
-5. **Consistency Check:**
-   - A key feature of AHP is ensuring that the comparisons you’ve made are **consistent**.
-   - The system will calculate the **consistency ratio** to assess the logical consistency of your comparisons.
-     - A consistency ratio below **0.1** is considered acceptable.
-     - If the ratio is above **0.1**, it suggests that the comparisons are inconsistent, and you should review them.
-
-6. **Ranking the Alternatives:**
-   - Once the weights are calculated and consistency is checked, the mutual fund schemes (or any other alternatives you are evaluating) will be ranked based on the selected criteria and their corresponding weights.
-   - The schemes will be sorted from the most favorable to the least favorable based on the weighted sum of the criteria.
-
-7. **Visualizing the Results:**
-   - You will be able to see a ranking of the mutual fund schemes along with their scores.
-   - You can also view the distribution of the Net Asset Value (NAV) for each of the top-ranked schemes.
-
-By following these steps, you will be able to make a well-informed decision using the power of the Analytical Hierarchy Process (AHP).
+### How to Use:
+1. **Select up to 6 criteria** that are important for mutual fund evaluation.
+2. **Compare criteria pairs:** Rate their relative importance using a slider.
+3. **View results:** Calculate weights, check consistency, and rank mutual funds.
+4. If the **Consistency Ratio** is too high (> 0.1), adjust your comparisons.
 """)
 
-
 selected_criteria = st.multiselect(
-    "Select criteria for evaluation:",
+    "Select up to 6 criteria for evaluation:",
     options=criteria,
-    format_func=lambda x: showing_criteria[x]
+    format_func=lambda x: showing_criteria[x],
+    max_selections=6
 )
 
 if selected_criteria:
@@ -96,7 +61,7 @@ if selected_criteria:
     for crit_1, crit_2 in pairwise_comparisons:
         st.markdown(f"**Compare {showing_criteria[crit_1]} and {showing_criteria[crit_2]}**")
         first_selected = st.radio(
-            f"Which criterion is more important?",
+            f"Which criterion you want to compare with the other?",
             options=[crit_1, crit_2],
             format_func=lambda x: showing_criteria[x],
             key=f"radio_{crit_1}_{crit_2}"
@@ -111,8 +76,13 @@ if selected_criteria:
         )
         if first_selected == crit_1:
             st.session_state.comparisons_made[(crit_1, crit_2)] = comparison_value
-        else:
             st.session_state.comparisons_made[(crit_2, crit_1)] = 1 / comparison_value
+            st.success(f"{showing_criteria[crit_1]} selected as the first criterion for comparison.")
+        else:
+            st.session_state.comparisons_made[(crit_2, crit_1)] = comparison_value
+            st.session_state.comparisons_made[(crit_1, crit_2)] = 1 / comparison_value
+            st.success(f"{showing_criteria[crit_2]} selected as the first criterion for comparison.")
+
 
 if st.session_state.comparisons_made:
     st.write("### Current Comparisons")
@@ -127,7 +97,7 @@ def calculate_ahp_weights(comparisons, selected_criteria):
     eigvals, eigvecs = np.linalg.eig(matrix.values)
     max_index = np.argmax(eigvals)
     priority_vector = eigvecs[:, max_index].real
-    priority_vector /= priority_vector.sum()  
+    priority_vector /= priority_vector.sum()
     return priority_vector, matrix
 
 def calculate_consistency_ratio(matrix, priority_vector):
@@ -138,18 +108,16 @@ def calculate_consistency_ratio(matrix, priority_vector):
     ri = ri_values[n - 1] if n <= len(ri_values) else 1.5
     return ci / ri
 
-def append_or_create_csv(data, user_id, data_dir):
+def append_or_create_csv(data, user_id):
     file_name = f"ranked_funds_{user_id}.csv"
-    file_path = os.path.join(data_dir, file_name)
-    os.makedirs(data_dir, exist_ok=True)  
+    file_path = file_name  
     if os.path.exists(file_path):
         existing_data = pd.read_csv(file_path)
         combined_data = pd.concat([existing_data, data]).drop_duplicates().reset_index(drop=True)
         combined_data.to_csv(file_path, index=False)
     else:
         data.to_csv(file_path, index=False)
-        
-        
+
 def load_data_in_chunks(data_dir, chunksize=100000):
     chunk_files = [os.path.join(data_dir, f) for f in os.listdir(data_dir) if f.endswith('.csv')]
     for file in chunk_files:
@@ -157,25 +125,14 @@ def load_data_in_chunks(data_dir, chunksize=100000):
         for data in chunk:
             yield data
 
-if selected_criteria:
-    st.session_state.criteria = selected_criteria  
-else:
-    st.session_state.criteria = []
-    
 if st.button("Analyse Results"):
     if st.session_state.comparisons_made and selected_criteria:
         priority_vector, matrix = calculate_ahp_weights(st.session_state.comparisons_made, selected_criteria)
         consistency_ratio = calculate_consistency_ratio(matrix, priority_vector)
 
-        # st.write("### Pairwise Comparison Matrix")
-        # st.dataframe(matrix)
-
-        # st.write("### Calculated Weights")
-        # st.dataframe(pd.DataFrame(priority_vector, index=selected_criteria, columns=["Weight"]))
-
         if consistency_ratio < 0.1:
             st.success(f"Consistency Ratio: {consistency_ratio:.2f} (Acceptable)")
-            
+
             mutual_fund_chunks = load_data_in_chunks(DATA_DIR)
             results = []
 
@@ -185,13 +142,13 @@ if st.button("Analyse Results"):
                         chunk["Score"] = chunk[selected_criteria].dot(priority_vector)
                         results.append(chunk)
                 ranked_funds = pd.concat(results).sort_values(by="Score", ascending=False)
-            
+
             st.write("### Top Mutual Fund Schemes")
             top_funds = ranked_funds.drop_duplicates("scheme_code").head(10)
             st.dataframe(top_funds)
 
             if user_id:
-                append_or_create_csv(top_funds, user_id, DATA_DIR)
+                append_or_create_csv(top_funds, user_id)
                 st.success(f"History updated successfully for user `{user_id}`.")
             else:
                 st.error("Please enter a unique identifier to save your results.")
@@ -206,7 +163,6 @@ if st.button("Analyse Results"):
                     plt.ylabel("Density")
                     st.pyplot(plt)
         else:
-            st.error(f"Consistency Ratio: {consistency_ratio:.2f} (Too high, review comparisons)")
-
+            st.error(f"Consistency Ratio: {consistency_ratio:.2f} (Too high! Please review your comparisons for logical consistency.)")
     else:
         st.error("Please complete all pairwise comparisons.")
